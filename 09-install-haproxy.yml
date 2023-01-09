@@ -1,0 +1,50 @@
+---
+- name: Install and configure HAProxy
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: FDO node firewall operations
+      block:
+        - name: See if firewalld is installed
+          ansible.builtin.stat:
+            path: /usr/sbin/firewalld
+          register: _firewalld_stat
+
+        - name: Open registry ports on host firewall
+          ansible.posix.firewalld:
+            service: http
+            zone: 'public'
+            state: enabled
+            immediate: true
+            permanent: true
+          when: _firewalld_stat.stat.exists
+
+    - name: Install HAProxy
+      ansible.builtin.dnf:
+        name: haproxy
+        state: present
+
+    - name: Create haproxy config file
+      ansible.builtin.template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: 0644
+      notify: Restart haproxy
+
+
+  handlers:
+    - name: Restart haproxy
+      ansible.builtin.systemd:
+        name: haproxy
+        enabled: true
+        state: restarted
+
+
+...
