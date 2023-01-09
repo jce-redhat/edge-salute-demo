@@ -1,0 +1,45 @@
+---
+- name: Inventory bootstrap
+  hosts: localhost
+  gather_facts: true
+  become: false
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: Generate hosts inventory file
+      ansible.builtin.template:
+        src: inventory-hosts.j2
+        dest: '{{ playbook_dir }}/inventory/hosts'
+
+    - name: Add FDO node to /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: '{{ ansible_default_ipv4.address }}  fdo-node'
+        regex: '{{ ansible_default_ipv4.address }}\s+fdo-node'
+        state: present
+      when: demo_type == 'fdo-hosted'
+      become: true
+
+    - name: Create SSH key for demo installation
+      community.crypto.openssh_keypair:
+        path: '{{ ansible_user_dir }}/.ssh/id_ed25519'
+        type: ed25519
+        comment: 'demo installation key'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0600
+
+    - name: Add installation key to local authorized_keys
+      ansible.builtin.lineinfile:
+        path: '{{ ansible_user_dir }}/.ssh/authorized_keys'
+        create: true
+        line: '{{ lookup("file", ansible_user_dir + "/.ssh/id_ed25519.pub") | trim }}'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0600
+
+
+...
+# vim: ft=yaml.ansible

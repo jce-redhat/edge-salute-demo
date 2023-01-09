@@ -1,0 +1,140 @@
+---
+- name: Build rpm-ostree image for edge node
+  hosts: fdo-node
+  gather_facts: true
+  become: false
+
+  vars_files:
+    vars/demo_vars.yml
+
+  tasks:
+    - name: Build edge node image
+      tags: edge-image
+      block:
+        - name: Push edge node blueprint
+          ansible.builtin.command: >
+            composer-cli blueprints push edge-blueprint.toml
+          args:
+            chdir: '{{ ansible_user_dir }}'
+
+        - name: Start edge node compose
+          ansible.builtin.command: >
+            composer-cli compose start-ostree {{ demo_edge_blueprint_name }} edge-container
+          register: _compose_output
+
+        - name: Get UUID of current compose
+          set_fact:
+            _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
+
+        - name: Wait for edge node compose to complete
+          ansible.builtin.command: >
+            composer-cli compose info {{ _compose_uuid }}
+          register: _compose_status
+          failed_when: _compose_status.stdout_lines[0] | regex_search('FAILED')
+          until: _compose_status.stdout_lines[0] | regex_search('FINISHED')
+          retries: 30
+          delay: 30
+
+        - name: Download edge container image
+          ansible.builtin.command: >
+            composer-cli compose image {{ _compose_uuid }}
+          args:
+            chdir: '{{ ansible_user_dir }}'
+
+        - name: Copy edge container image to local image cache
+          ansible.builtin.command: >
+            skopeo copy oci-archive:{{ _compose_uuid }}-container.tar containers-storage:localhost/rfe-mirror:latest
+          args:
+            chdir: '{{ ansible_user_dir }}'
+      # end block
+      always:
+        - name: Delete edge node compose artifacts
+          block:
+            - name: Delete edge node compose
+              ansible.builtin.command: >
+                composer-cli compose delete {{ _compose_uuid  }}
+
+            - name: Delete edge node compose image
+              ansible.builtin.file:
+                path: '{{ ansible_user_dir }}/{{ _compose_uuid }}-container.tar'
+                state: absent
+          # end block
+          when: demo_delete_composes | bool
+
+    - name: Simplified installer firewall operations
+      tags: edge-installer
+      become: true
+      block:
+        - name: See if firewalld is installed
+          ansible.builtin.stat:
+            path: /usr/sbin/firewalld
+          register: _firewalld_stat
+
+        - name: Open FDO ports on host firewall
+          ansible.posix.firewalld:
+            port: '8000/tcp'
+            state: enabled
+            zone: '{{ "libvirt" if demo_type == "fdo-hosted" else "public" }}'
+            immediate: true
+            permanent: true
+          when: _firewalld_stat.stat.exists
+
+    - name: Build simplified installer image
+      tags: edge-installer
+      block:
+        - name: Run edge node mirror container
+          containers.podman.podman_container:
+            name: rfe-mirror
+            image: localhost/rfe-mirror
+            state: started
+            auto_remove: true
+            publish:
+              - '8000:8080'
+
+        - name: Push simplified installer blueprint
+          ansible.builtin.command: >
+            composer-cli blueprints push simplified-installer.toml
+          args:
+            chdir: '{{ ansible_user_dir }}'
+
+        - name: Start simplified installer compose
+          ansible.builtin.command: >
+            composer-cli compose start-ostree {{ demo_installer_blueprint_name }} edge-simplified-installer
+              --url http://{{ hostvars['fdo-node'].ansible_default_ipv4.address }}:8000/repo/
+          register: _compose_output
+
+        - name: Get UUID of current compose
+          set_fact:
+            _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
+
+        - name: Wait for simplified installer compose to complete
+          ansible.builtin.command: >
+            composer-cli compose info {{ _compose_uuid }}
+          register: _compose_status
+          failed_when: _compose_status.stdout_lines[0] | regex_search('FAILED')
+          until: _compose_status.stdout_lines[0] | regex_search('FINISHED')
+          retries: 30
+          delay: 30
+
+        - name: Download simplified installer image
+          ansible.builtin.command: >
+            composer-cli compose image {{ _compose_uuid }}
+          args:
+            chdir: /tmp
+
+        # could copy/delete but this is atomic and much faster than a copy.
+        # not using 'creates' for idempotency so the target gets overwritten
+        # with a new image when created.
+        - name: Rename simplified installer image
+          ansible.builtin.command: >
+            mv -f /tmp/{{ _compose_uuid }}-simplified-installer.iso /tmp/simplified-installer.iso
+      # end block
+      always:
+        - name: Delete simplified installer compose
+          ansible.builtin.command: >
+            composer-cli compose delete {{ _compose_uuid  }}
+          when: demo_delete_composes | bool
+
+
+...
+# vim: ft=yaml.ansible

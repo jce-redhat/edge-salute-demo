@@ -1,0 +1,9 @@
+#!/bin/sh
+
+while true; do
+    if [ -n "$(curl -s --head --request GET http://localhost:8080 | grep '200 OK')" ]
+    then
+        firefox -kiosk http://localhost:8080
+    fi
+    sleep 1
+done

@@ -1,0 +1,65 @@
+---
+## change these to match your demo environment
+
+# demo types:
+#   fdo-hosted - edge device is a VM hosted on the FDO node
+#   external   - edge device is a VM or physical device separate
+#                from the FDO node
+demo_type: fdo-hosted
+
+# change this to your specific USB camera information if demo_type
+# is "fdo-hosted"
+#
+# USB camera vendor and product IDs from the output of `lsusb`, e.g.
+# Bus 003 Device 004: ID 0c45:6366 Microdia Webcam Vitade AF
+demo_edge_node_video_vendor: '0c45'
+demo_edge_node_video_product: '6366'
+
+
+## demo variables
+demo_registry_container_name: local-registry
+demo_registry_host: '{{ hostvars["fdo-node"].ansible_default_ipv4.address }}:5000'
+
+demo_edge_blueprint_name: Edge
+demo_edge_blueprint_version: '0.0.1'
+demo_installer_blueprint_name: SimplifiedInstall
+demo_installer_blueprint_version: '0.0.1'
+
+# delete builder compose artifacts at end of playbook run
+demo_delete_composes: true
+
+demo_edge_node_user: core
+demo_edge_node_password: edge
+demo_edge_node_packages:
+  '9':
+    - container-tools
+  '8':
+    - '@container-tools'
+demo_edge_node_kiosk_packages:
+  '9':
+    - gdm
+    - gnome-kiosk-script-session
+    - firefox
+  '8':
+    - gdm
+    - gnome-session-kiosk-session
+    - firefox
+demo_edge_node_vcpus: 2
+demo_edge_node_memory: 6144
+# calculate a default for this?
+demo_edge_node_os_variant: rhel9.1
+demo_edge_node_storage_device: /dev/vda
+demo_edge_node_video_device: /dev/video0
+
+# HowsMySalute repo variables
+salute_repo_url: https://github.com/tedbrunell/HowsMySalute.git
+salute_repo_branches:
+  - usmc
+  - navy
+  - army
+  - usaf
+  - ussf
+salute_repo_name: howsmysalute
+
+
+...

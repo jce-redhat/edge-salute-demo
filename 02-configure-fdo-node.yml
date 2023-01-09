@@ -1,0 +1,61 @@
+---
+- name: Configure FDO node
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vars/demo_vars.yml
+    - vars/vault.yml
+
+  tasks:
+    - name: Subscribe FDO node
+      community.general.redhat_subscription:
+        state: present
+        org_id: '{{ vault_rhsm_organization }}'
+        activationkey: '{{ vault_rhsm_activation_key }}'
+
+    - name: Update FDO node packages
+      ansible.builtin.dnf:
+        name: '*'
+        state: latest
+
+    - name: Install image builder packages
+      ansible.builtin.dnf:
+        name:
+          - osbuild-composer
+          - composer-cli
+          - cockpit-composer
+        state: present
+      notify: Restart image builder services
+
+    - name: Install additional packages
+      ansible.builtin.dnf:
+        name:
+          - bash-completion
+          - jq
+        state: present
+
+    - name: Install container-tools for FDO node on RHEL 9
+      ansible.builtin.dnf:
+        name: container-tools
+        state: present
+      when: ansible_distribution_major_version == '9'
+
+    - name: Add user to weldr group
+      ansible.builtin.user:
+        name: '{{ ansible_env.SUDO_USER }}'
+        groups: weldr
+      notify: Restart image builder services
+
+
+  handlers:
+    - name: Restart image builder services
+      ansible.builtin.systemd:
+        name: osbuild-composer.socket
+        enabled: true
+        state: started
+
+
+...
+# vim: ft=yaml.ansible

@@ -1,0 +1,16 @@
+---
+- name: Clone salute repo branch "{{ _branch }}"
+  ansible.builtin.git:
+    repo: '{{ salute_repo_url }}'
+    dest: '{{ ansible_user_dir }}/{{ salute_repo_name }}'
+    version: '{{ _branch }}'
+
+- name: Build container image for branch "{{ _branch }}"
+  containers.podman.podman_image:
+    name: '{{ demo_registry_host }}/{{ salute_repo_name}}:{{ _branch }}'
+    path: '{{ ansible_user_dir }}/{{ salute_repo_name }}'
+    build:
+      cache: false
+    push: true
+
+...

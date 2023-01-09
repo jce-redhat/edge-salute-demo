@@ -1,0 +1,8 @@
+---
+exclude_paths:
+  - collections/ansible_collections/
+  - vars/vault.yml
+
+offline: true
+
+...

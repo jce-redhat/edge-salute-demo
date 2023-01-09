@@ -1,0 +1,239 @@
+---
+- name: Install and configure FDO
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: FDO node firewall operations
+      tags: fdo-install
+      block:
+        - name: See if firewalld is installed
+          ansible.builtin.stat:
+            path: /usr/sbin/firewalld
+          register: _firewalld_stat
+
+        - name: Open FDO ports on host firewall
+          ansible.posix.firewalld:
+            port: '8080-8083/tcp'
+            state: enabled
+            zone: '{{ "libvirt" if demo_type == "fdo-hosted" else "public" }}'
+            immediate: true
+            permanent: true
+          when: _firewalld_stat.stat.exists
+
+    - name: Install FDO admin package
+      tags: fdo-install
+      ansible.builtin.dnf:
+        name: fdo-admin-cli
+        state: present
+      notify: Restart fdo-aio service
+
+    - name: Flush handlers to restart fdo-aio service
+      tags: fdo-install
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for creation of serviceinfo_api_server.yml file
+      tags: fdo-install
+      ansible.builtin.wait_for:
+        path: /etc/fdo/aio/configs/serviceinfo_api_server.yml
+        state: present
+
+    - name: Get ansible_user_dir fact for unprivileged user
+      ansible.builtin.setup:
+        filter: 'ansible_user_dir'
+      become: false
+
+    - name: Grab edge node user SSH public key for image blueprint
+      ansible.builtin.slurp:
+        src: '{{ ansible_user_dir }}/.ssh/id_{{ demo_edge_node_user }}.pub'
+      register: _edge_node_pubkey
+
+    - name: Read FDO node default serviceinfo_api_server.yml file
+      ansible.builtin.command: >
+        cat /etc/fdo/aio/configs/serviceinfo_api_server.yml
+      register: _default_svcinfo
+
+    - name: Set service info auth token fact
+      ansible.builtin.set_fact:
+        _service_info_auth_token: '{{ (_default_svcinfo.stdout | from_yaml).service_info_auth_token }}'
+
+    - name: Set admin auth token fact
+      ansible.builtin.set_fact:
+        _admin_auth_token: '{{ (_default_svcinfo.stdout | from_yaml).admin_auth_token }}'
+
+    # TODO why under /etc?
+    - name: Create /etc/device0 directories
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: directory
+        owner: root
+        group: root
+        mode: 0755
+      loop:
+        - /etc/device0/cfg/etc/containers/registries.conf.d
+        - /etc/device0/cfg/home/{{ demo_edge_node_user }}/.local/bin
+        - /etc/device0/cfg/var/lib/AccountsService/users
+
+    - name: Copy device0 files to /etc
+      ansible.builtin.copy:
+        src: files/device0/
+        dest: /etc/device0
+        owner: root
+        group: root
+        mode: 0644
+        directory_mode: 0755
+
+    - name: Create device0 container registry configuration
+      ansible.builtin.template:
+        src: 999-{{ demo_registry_container_name }}-insecure.conf.j2
+        dest: /etc/device0/cfg/etc/containers/registries.conf.d/999-{{ demo_registry_container_name }}-insecure.conf
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Generate howsmysalute container unit file
+      block:
+        # stopped state will create but not run the container so the
+        # systemd unit file can be generated
+        # NOTE: unit file seems to always get recreated even if the stopped
+        # container exists and the task reports no change
+        - name: Generate howsmysalute container unit file from prod tag
+          containers.podman.podman_container:
+            name: howsmysalute
+            image: '{{ demo_registry_host }}/{{ salute_repo_name }}:prod'
+            state: stopped
+            auto_remove: true
+            device: '{{ demo_edge_node_video_device }}'
+            security_opt: 'label=disable'
+            label:
+              io.containers.autoupdate: registry
+            privileged: true
+            publish:
+              - '8080:8080'
+            generate_systemd:
+              path: /etc/device0/cfg/etc/systemd/system
+              new: true
+
+        - name: Add ExecStopPost to howsmysalute container unit file
+          ansible.builtin.lineinfile:
+            path: /etc/device0/cfg/etc/systemd/system/container-{{ salute_repo_name }}.service
+            line: 'ExecStopPost=/usr/bin/pkill -f firefox'
+            regex: '^ExecStopPost=/usr/bin/pkill -f firefox'
+            insertafter: '^ExecStopPost=/usr/bin/podman'
+            owner: root
+            group: root
+            mode: 0644
+      always:
+        - name: Remove howsmysalute container
+          containers.podman.podman_container:
+            name: howsmysalute
+            state: absent
+
+    - name: Enable kiosk mode for edge user
+      ansible.builtin.template:
+        src: edge-user-kiosk-mode.j2
+        dest: /etc/device0/cfg/var/lib/AccountsService/users/{{ demo_edge_node_user }}
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Enable firefox in kiosk mode
+      ansible.builtin.template:
+        src: redhat-kiosk.j2
+        dest: /etc/device0/cfg/home/{{ demo_edge_node_user }}/.local/bin/redhat-kiosk
+        owner: root
+        group: root
+        mode: 0644
+
+    # NOTE: not idempotent since the original file gets overwritten, but
+    # it still contains the same required variables and values so there
+    # are no issues with the preceeding task that reads the file on each
+    # execution
+    # TODO: does it make sense to generate new tokens instead and ignore
+    # the ones in the original file?
+    - name: Create new serviceinfo_api_server.yml from template
+      ansible.builtin.template:
+        src: templates/serviceinfo_api_server.yml.j2
+        dest: /etc/fdo/aio/configs/serviceinfo_api_server.yml
+        owner: root
+        group: root
+        mode: 0644
+        backup: true
+      notify: Restart fdo-aio service
+
+    - name: Disable TPM on edge device
+      ansible.builtin.lineinfile:
+        path: /etc/fdo/aio/aio_configuration
+        line: 'manufacturing_disable_key_storage_tpm: false'
+        regex: '^manufacturing_disable_key_storage_tpm:'
+      notify: Restart fdo-aio service
+
+    - name: Remove extraneous IP addresses from /etc/fdo/aio/aio_configuration
+      ansible.builtin.lineinfile:
+        path: /etc/fdo/aio/aio_configuration
+        regex: '- IpAddr: "?{{ item }}'
+        state: absent
+        backup: true
+      loop: '{{ ansible_all_ipv4_addresses + ansible_all_ipv6_addresses }}'
+      when: item != ansible_default_ipv4.address
+      notify: Restart fdo-aio service
+
+    - name: Remove extraneous IP addresses from owner_onboarding_server.yml
+      ansible.builtin.lineinfile:
+        path: /etc/fdo/aio/configs/owner_onboarding_server.yml
+        regex: '- ip_address: "?{{ item }}'
+        state: absent
+        backup: true
+      loop: '{{ ansible_all_ipv4_addresses + ansible_all_ipv6_addresses }}'
+      when: item != ansible_default_ipv4.address
+      notify: Restart fdo-aio service
+
+    - name: Read in default manufacturing_server.yml file
+      ansible.builtin.slurp:
+        path: /etc/fdo/aio/configs/manufacturing_server.yml
+      register: _default_mfg_svr
+
+    - name: Create new manufacturing server fact
+      ansible.builtin.set_fact:
+        _new_mfg_svr: '{{ _default_mfg_svr.content | b64decode | from_yaml }}'
+
+    - name: Update rendevous_info fact for valid ipv4 addresses
+      ansible.builtin.set_fact:
+        _rendezvous_info:
+          - '{{ item }}'
+      loop: '{{ _new_mfg_svr.rendezvous_info }}'
+      when: item.ip_address == ansible_default_ipv4.address
+
+    - name: Update new manufacturing server fact
+      ansible.utils.update_fact:
+        updates:
+          - path: '_new_mfg_svr.rendezvous_info'
+            value: '{{ _rendezvous_info }}'
+      register: _updated
+
+    - name: Write updated manufacturing_server.yml file
+      ansible.builtin.copy:
+        content: '{{ _updated._new_mfg_svr | to_nice_yaml(indent=2) }}'
+        dest: /etc/fdo/aio/configs/manufacturing_server.yml
+        owner: root
+        group: root
+        mode: 0644
+        backup: true
+      notify: Restart fdo-aio service
+
+
+  handlers:
+    - name: Restart fdo-aio service
+      tags: fdo-install
+      ansible.builtin.systemd:
+        name: fdo-aio.service
+        enabled: true
+        state: restarted
+
+
+...
+# vim: ft=yaml.ansible

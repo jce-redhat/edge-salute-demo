@@ -1,0 +1,11 @@
+---
+- ansible.builtin.import_playbook: 01-configure-hypervisor.yml
+  when: demo_type == 'fdo-hosted'
+- ansible.builtin.import_playbook: 02-configure-fdo-node.yml
+- ansible.builtin.import_playbook: 03-configure-fdo-registry.yml
+- ansible.builtin.import_playbook: 04-prep-image-build.yml
+- ansible.builtin.import_playbook: 05-build-containers.yml
+- ansible.builtin.import_playbook: 06-install-fdo-aio.yml
+
+...
+# vim: ft=yaml.ansible

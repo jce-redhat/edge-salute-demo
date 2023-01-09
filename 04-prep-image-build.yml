@@ -1,0 +1,52 @@
+---
+- name: Prep FDO node for building images
+  hosts: fdo-node
+  gather_facts: true
+  become: false
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: Ensure $HOME/.ssh exists
+      ansible.builtin.file:
+        path: '{{ ansible_user_dir }}/.ssh'
+        state: directory
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0700
+
+    - name: Create SSH key for edge node user
+      community.crypto.openssh_keypair:
+        path: '{{ ansible_user_dir }}/.ssh/id_{{ demo_edge_node_user }}'
+        type: rsa
+        size: 4096
+        comment: 'Edge node key'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0600
+
+    - name: Grab edge node user SSH public key for image blueprint
+      ansible.builtin.slurp:
+        src: '{{ ansible_user_dir }}/.ssh/id_{{ demo_edge_node_user }}.pub'
+      register: _edge_node_pubkey
+
+    - name: Create edge node image blueprint
+      ansible.builtin.template:
+        src: templates/edge-blueprint.toml.j2
+        dest: '{{ ansible_user_dir }}/edge-blueprint.toml'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0644
+
+    - name: Create installer image blueprint
+      ansible.builtin.template:
+        src: templates/simplified-installer.toml.j2
+        dest: '{{ ansible_user_dir }}/simplified-installer.toml'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0644
+
+
+...
+# vim: ft=yaml.ansible

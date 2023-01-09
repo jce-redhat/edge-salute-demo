@@ -1,0 +1,37 @@
+---
+- name: Create edge node VM
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: End play if edge node VM isn't needed
+      ansible.builtin.meta: end_play
+      when: demo_type != 'fdo-hosted'
+
+    - name: Get list of existing VMs
+      community.libvirt.virt:
+        command: list_vms
+      register: _all_vms
+
+    - name: Create edge node with virt-install and wait for completion
+      ansible.builtin.command: >
+        virt-install
+          --name edge-node
+          --vcpus {{ demo_edge_node_vcpus }}
+          --memory {{ demo_edge_node_memory }}
+          --os-variant {{ demo_edge_node_os_variant }}
+          --network network=default,mac={{ hostvars["edge-node"].edge_node_mac_address }}
+          --graphics vnc,listen=0.0.0.0 --noautoconsole --wait 300
+          --host-device 0x{{ demo_edge_node_video_vendor }}:0x{{ demo_edge_node_video_product }}
+          --boot uefi
+          --autostart
+          --cdrom /tmp/simplified-installer.iso
+      when: 'not "edge-node" in _all_vms.list_vms'
+
+
+...
+# vim: ft=yaml.ansible

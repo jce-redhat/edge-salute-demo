@@ -1,0 +1,116 @@
+---
+service_info:
+  initial_user: 
+    username: {{ demo_edge_node_user }}
+    sshkeys:
+    - "{{ _edge_node_pubkey.content | b64decode }}"
+  files:
+  - path: /etc/rpm-ostreed.conf
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/rpm-ostreed.conf 
+  - path: /etc/systemd/system/applyupdate.service
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/systemd/system/applyupdate.service
+  - path: /etc/systemd/system/applyupdate.timer
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/systemd/system/applyupdate.timer
+  - path: /etc/systemd/system/container-howsmysalute.service
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/systemd/system/container-howsmysalute.service
+  - path: /tmp/override.conf
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/systemd/system/podman-auto-update.timer.d/override.conf
+  - path: /etc/containers/registries.conf.d/999-{{ demo_registry_container_name }}-insecure.conf
+    permissions: 644
+    source_path: /etc/device0/cfg/etc/containers/registries.conf.d/999-{{ demo_registry_container_name }}-insecure.conf
+  - path: /tmp/{{ demo_edge_node_user }}
+    permissions: 644
+    source_path: /etc/device0/cfg/var/lib/AccountsService/users/{{ demo_edge_node_user }}
+  - path: /tmp/redhat-kiosk
+    permissions: 755
+    source_path: /etc/device0/cfg/home/{{ demo_edge_node_user }}/.local/bin/redhat-kiosk
+  commands:
+  - command: mkdir
+    args:
+    - -p
+    - /etc/systemd/system/podman-auto-update.timer.d
+  - command: cp
+    args:
+    - /tmp/override.conf
+    - /etc/systemd/system/podman-auto-update.timer.d
+  - command: mkdir
+    args:
+    - -p
+    - /home/{{ demo_edge_node_user }}/.local/bin
+  - command: cp
+    args:
+    - /tmp/redhat-kiosk
+    - /home/{{ demo_edge_node_user }}/.local/bin
+  - command: chown
+    args:
+    - -R
+    - {{ demo_edge_node_user }}:{{ demo_edge_node_user }}
+    - /home/{{ demo_edge_node_user }}
+  - command: firewall-cmd
+    args:
+    - --permanent
+    - --add-port=8080/tcp
+  - command: firewall-cmd
+    args:
+    - --reload
+  - command: cp
+    args:
+    - /usr/share/accountsservice/user-templates/standard
+    - /etc/accountsservice/user-templates/standard
+  - command: sed
+    args:
+    - -i.bak
+    - 's/Session=.*/Session=com.redhat.Kiosk\nSystemAccount=false/g'
+    - /etc/accountsservice/user-templates/standard
+  - command: mkdir
+    args:
+    - -p
+    - /var/lib/AccountsService/users
+  - command: cp
+    args:
+    - /tmp/{{ demo_edge_node_user }}
+    - /var/lib/AccountsService/users/{{ demo_edge_node_user }}
+  - command: sed
+    args:
+    - -i.bak
+    - '/^\[daemon\]/a AutomaticLoginEnable=True\nAutomaticLogin={{ demo_edge_node_user }}\n'
+    - /etc/gdm/custom.conf
+  - command: setsebool
+    args:
+    - -P
+    - container_use_devices=1
+  - command: restorecon
+    args:
+    - -vFr
+    - /etc
+    - /home
+    - /var
+  - command: systemctl
+    args:
+    - daemon-reload
+  - command: systemctl
+    args:
+    - enable 
+    - --now
+    - rpm-ostreed-automatic.timer 
+    - applyupdate.timer 
+    - podman-auto-update.timer 
+    - container-howsmysalute.service
+  - command: shutdown
+    args:
+    - -r
+    - +1
+  diskencryption_clevis: ~
+  additional_serviceinfo: ~
+bind: "0.0.0.0:8083"
+service_info_auth_token: {{ _service_info_auth_token }}
+admin_auth_token: {{ _admin_auth_token }}
+device_specific_store_driver:
+  Directory:
+    path: /etc/fdo/aio/stores/serviceinfo_api_devices
+

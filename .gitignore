@@ -1,0 +1,4 @@
+ansible.log
+collections/ansible_collections/
+inventory/hosts
+vars/vault.yml

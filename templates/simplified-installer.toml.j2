@@ -1,0 +1,14 @@
+name = "SimplifiedInstall"
+description = "A rhel-edge simplified-installer image"
+version = "0.0.1"
+packages = []
+modules = []
+groups = []
+distro = ""
+
+[customizations]
+installation_device = "/dev/vda"
+
+[customizations.fdo]
+manufacturing_server_url = "http://{{ hostvars['fdo-node'].ansible_default_ipv4.address }}:8080"
+diun_pub_key_insecure = "true"

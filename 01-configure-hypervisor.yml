@@ -1,0 +1,81 @@
+---
+- name: Configure hypervisor
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+  tags: virt-net
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: End play if hypervisor isn't needed on the FDO node
+      ansible.builtin.meta: end_play
+      when: demo_type != 'fdo-hosted'
+
+    - name: Install hypervisor packages
+      ansible.builtin.dnf:
+        name:
+          - '@Virtualization Host'
+          - virt-install
+        state: present
+
+    - name: Ensure libvirtd service is running
+      ansible.builtin.systemd:
+        name: libvirtd
+        enabled: true
+        state: restarted
+
+    # neither community.libvirt.virt_net nor the virsh net-* commands
+    # have a way to see if a dhcp host reservation exists for idempotency
+    # so this hack attempts to do so
+    - name: Get XML for default libvirt network
+      ansible.builtin.command: >
+        virsh net-dumpxml default
+      register: _virt_net_xml
+
+    - name: Parse network XML
+      block:
+        - name: Create XML tempdir
+          ansible.builtin.tempfile:
+            state: directory
+          register: _tempdir
+
+        - name: Write network XML to tempdir
+          ansible.builtin.copy:
+            content: '{{ _virt_net_xml.stdout }}'
+            dest: '{{ _tempdir.path }}/net.xml'
+
+        # work around nested quoting issue in net-update command below
+        - name: Set temp _hostname fact
+          ansible.builtin.set_fact:
+            _hostname: edge-node
+
+        # if the static reservation doesn't exist, the temporary XML
+        # file gets updated so the state of the task changes.  this is
+        # used to determine if a reservation needs to be added to the
+        # live libvirt network config.
+        - name: Check if static reservation exists
+          community.general.xml:
+            path: '{{ _tempdir.path }}/net.xml'
+            xpath: /network/ip/dhcp/host[@name='{{ _hostname }}']
+          register: _host_reservation
+
+        # use virsh net-update since community.libvirt.virt_net doesn't have
+        # equivalent functionality
+        - name: Add static reservation
+          ansible.builtin.command: >
+            virsh net-update default add ip-dhcp-host
+              '<host name="{{ _hostname }}" ip="{{ hostvars[_hostname].ansible_host }}" mac="{{ hostvars[_hostname].edge_node_mac_address }}"/>'
+              --live --config
+          when: _host_reservation is changed
+      # end block
+      always:
+        - name: Delete XML tempdir
+          ansible.builtin.file:
+            path: '{{ _tempdir.path }}'
+            state: absent
+
+
+...
+# vim: ft=yaml.ansible

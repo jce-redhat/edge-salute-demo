@@ -1,0 +1,5 @@
+---
+vault_rhsm_activation_key: my_activation_key
+vault_rhsm_organization: 01234567
+
+...

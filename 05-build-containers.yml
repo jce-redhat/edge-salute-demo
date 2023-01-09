@@ -1,0 +1,30 @@
+---
+- name: Build container images for salute demo
+  hosts: fdo-node
+  gather_facts: true
+  become: false
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: Build salute demo containers for each branch
+      ansible.builtin.include_tasks:
+        file: common_tasks/build-salute-containers.yml
+      loop: '{{ salute_repo_branches }}'
+      loop_control:
+        loop_var: _branch
+
+    - name: Tag first branch as production
+      containers.podman.podman_tag:
+        image: '{{ demo_registry_host }}/{{ salute_repo_name }}:{{ salute_repo_branches[0] }}'
+        target_names:
+          - '{{ demo_registry_host }}/{{ salute_repo_name }}:prod'
+
+    - name: Push production container image
+      containers.podman.podman_image:
+        name: '{{ demo_registry_host }}/{{ salute_repo_name }}:prod'
+        push: true
+
+...
+# vim: ft=yaml.ansible

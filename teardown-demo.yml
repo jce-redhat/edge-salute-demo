@@ -1,0 +1,192 @@
+---
+- name: Tear down demo environment on FDO node
+  hosts: fdo-node
+  gather_facts: true
+  become: false
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    - name: Gather package facts
+      tags: always
+      ansible.builtin.package_facts:
+
+    - name: Set container registry service name fact
+      tags: always
+      ansible.builtin.set_fact:
+        _registry_svc_name: container-{{ demo_registry_container_name }}.service
+
+    # artifacts from 08-create-edge-node-vm.yml
+    - name: Get current list of VMs
+      tags: edge-vm
+      community.libvirt.virt:
+        command: list_vms
+      register: _running_vms
+      become: true
+
+    - name: Remove edge-node VM
+      tags: edge-vm
+      block:
+        - name: Destroy edge-node VM
+          community.libvirt.virt:
+            name: edge-node
+            state: destroyed
+
+        # TODO next version of virt module will fix a bug that prevents VMs
+        # with nvram/bios from being undefined, use command as a workaround
+        # https://github.com/ansible-collections/community.libvirt/pull/136
+        - name: Undefine edge-node VM
+          ansible.builtin.command: >
+            virsh undefine edge-node --nvram
+
+        - name: Delete edge-node virtual disk
+          ansible.builtin.file:
+            path: /var/lib/libvirt/images/edge-node.qcow2
+            state: absent
+      # end block
+      when: "'edge-node' in _running_vms.list_vms"
+      become: true
+
+    # artifacts from 07-build-ostree-image.yml
+    - name: Remove composer artifacts
+      tags: composer
+      block:
+        - name: Get list of existing composes
+          ansible.builtin.command:
+            composer-cli compose list
+          register: _compose_list
+
+        - name: Delete composes
+          ansible.builtin.command:
+            composer-cli compose delete '{{ item.split()[0] }}'
+          loop: '{{ _compose_list.stdout_lines }}'
+
+        - name: Get list of existing blueprints
+          ansible.builtin.command:
+            composer-cli blueprints list
+          register: _blueprints_list
+
+        - name: Delete blueprints
+          ansible.builtin.command:
+            composer-cli blueprints delete '{{ item }}'
+          loop: '{{ _blueprints_list.stdout_lines }}'
+
+        - name: Remove simplified-installer.iso
+          ansible.builtin.file:
+            path: /tmp/simplified-installer.iso
+            state: absent
+          become: true
+
+    - name: Remove rfe-mirror container
+      tags: rfe-mirror
+      block:
+        - name: Delete rfe-mirror container
+          containers.podman.podman_container:
+            name: rfe-mirror
+            state: absent
+
+        - name: Delete rfe-mirror container image
+          containers.podman.podman_image:
+            name: localhost/rfe-mirror
+            state: absent
+
+    # artifacts from 06-install-fdo-aio.yml
+    - name: Remove FDO artifacts
+      tags: fdo
+      become: true
+      block:
+        - name: Stop fdo-aio service
+          ansible.builtin.systemd:
+            name: fdo-aio
+            state: stopped
+            enabled: false
+          when: '"fdo-admin-cli" in ansible_facts.packages'
+
+        - name: Remove fdo-admin-cli package
+          ansible.builtin.dnf:
+            name: fdo-admin-cli
+            state: absent
+
+        - name: Remove FDO and edge node files
+          ansible.builtin.file:
+            path: '{{ item }}'
+            state: absent
+          loop:
+            - /etc/device0
+            - /etc/fdo/aio
+
+    # artifacts from 05-build-containers.yml
+    - name: Remove salute demo artifacts
+      tags: salute-images
+      block:
+        - name: Remove salute demo images
+          containers.podman.podman_image:
+            name: '{{ demo_registry_host }}/{{ salute_repo_name }}:{{ item }}'
+            state: absent
+          loop: '{{ salute_repo_branches + ["prod"] }}'
+
+        - name: Remove prod salute demo image owned by root
+          containers.podman.podman_image:
+            name: '{{ demo_registry_host }}/{{ salute_repo_name }}:prod'
+            state: absent
+          become: true
+
+        - name: Remove salute demo local repo
+          ansible.builtin.file:
+            path: '{{ ansible_user_dir }}/{{ salute_repo_name }}'
+            state: absent
+
+    # artifacts from 04-prep-image-build.yml
+    - name: Remove SSH keys
+      tags: sshkeys
+      community.crypto.openssh_keypair:
+        path: '{{ ansible_user_dir }}/.ssh/id_{{ demo_edge_node_user }}'
+        state: absent
+
+    - name: Remove blueprint files
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - '{{ ansible_user_dir }}/edge-blueprint.toml'
+        - '{{ ansible_user_dir }}/simplified-installer.toml'
+
+    # artifacts from 03-configure-fdo-registry.yml
+    - name: Check for existence of container registry service file
+      tags: registry
+      ansible.builtin.stat:
+        path: '{{ ansible_user_dir }}/.config/systemd/user/{{ _registry_svc_name }}'
+      register: _registry_svc_stat
+
+    - name: Remove container registry
+      tags: registry
+      block:
+        - name: Stop container registry service
+          ansible.builtin.systemd:
+            name: '{{ _registry_svc_name }}'
+            state: stopped
+            enabled: false
+            scope: user
+
+        - name: Remove container registry service unit
+          ansible.builtin.file:
+            path: '{{ ansible_user_dir }}/.config/systemd/user/{{ _registry_svc_name }}'
+            state: absent
+
+        - name: Remove container registry volume
+          containers.podman.podman_volume:
+            name: '{{ demo_registry_container_name }}-data'
+            state: absent
+      # end block
+      when: _registry_svc_stat.stat.exists
+
+    - name: Remove local registry config file
+      ansible.builtin.file:
+        path: /etc/containers/registries.conf.d/999-{{ demo_registry_container_name }}-insecure.conf
+        state: absent
+      become: true
+
+
+...
+# vim: ft=yaml.ansible
