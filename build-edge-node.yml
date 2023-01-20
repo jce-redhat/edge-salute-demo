@@ -1,6 +1,8 @@
 ---
-- ansible.builtin.import_playbook: 07-build-ostree-image.yml
-- ansible.builtin.import_playbook: 08-create-edge-node-vm.yml
+- name: Build ostree images
+  ansible.builtin.import_playbook: 07-build-ostree-image.yml
+- name: Create edge node VM
+  ansible.builtin.import_playbook: 08-create-edge-node-vm.yml
   when: demo_type == 'fdo-hosted'
 
 ...

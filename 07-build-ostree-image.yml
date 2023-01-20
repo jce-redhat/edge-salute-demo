@@ -12,21 +12,24 @@
       tags: edge-image
       block:
         - name: Push edge node blueprint
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli blueprints push edge-blueprint.toml
           args:
             chdir: '{{ ansible_user_dir }}'
 
         - name: Start edge node compose
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose start-ostree {{ demo_edge_blueprint_name }} edge-container
           register: _compose_output
 
         - name: Get UUID of current compose
-          set_fact:
+          ansible.builtin.set_fact:
             _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
 
         - name: Wait for edge node compose to complete
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose info {{ _compose_uuid }}
           register: _compose_status
@@ -36,12 +39,14 @@
           delay: 30
 
         - name: Download edge container image
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose image {{ _compose_uuid }}
           args:
             chdir: '{{ ansible_user_dir }}'
 
         - name: Copy edge container image to local image cache
+          # noqa no-changed-when
           ansible.builtin.command: >
             skopeo copy oci-archive:{{ _compose_uuid }}-container.tar containers-storage:localhost/rfe-mirror:latest
           args:
@@ -49,17 +54,17 @@
       # end block
       always:
         - name: Delete edge node compose artifacts
+          when: demo_delete_composes | bool
           block:
             - name: Delete edge node compose
+              # noqa no-changed-when
               ansible.builtin.command: >
-                composer-cli compose delete {{ _compose_uuid  }}
+                composer-cli compose delete {{ _compose_uuid }}
 
             - name: Delete edge node compose image
               ansible.builtin.file:
                 path: '{{ ansible_user_dir }}/{{ _compose_uuid }}-container.tar'
                 state: absent
-          # end block
-          when: demo_delete_composes | bool
 
     - name: Simplified installer firewall operations
       tags: edge-installer
@@ -92,22 +97,25 @@
               - '8000:8080'
 
         - name: Push simplified installer blueprint
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli blueprints push simplified-installer.toml
           args:
             chdir: '{{ ansible_user_dir }}'
 
         - name: Start simplified installer compose
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose start-ostree {{ demo_installer_blueprint_name }} edge-simplified-installer
               --url http://{{ hostvars['fdo-node'].ansible_default_ipv4.address }}:8000/repo/
           register: _compose_output
 
         - name: Get UUID of current compose
-          set_fact:
+          ansible.builtin.set_fact:
             _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
 
         - name: Wait for simplified installer compose to complete
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose info {{ _compose_uuid }}
           register: _compose_status
@@ -116,7 +124,14 @@
           retries: 30
           delay: 30
 
+        - name: Remove existing simplified installer ISO
+          ansible.builtin.file:
+            path: /tmp/simplified-installer.iso
+            state: absent
+          become: true
+
         - name: Download simplified installer image
+          # noqa no-changed-when
           ansible.builtin.command: >
             composer-cli compose image {{ _compose_uuid }}
           args:
@@ -128,11 +143,14 @@
         - name: Rename simplified installer image
           ansible.builtin.command: >
             mv -f /tmp/{{ _compose_uuid }}-simplified-installer.iso /tmp/simplified-installer.iso
+          args:
+            removes: /tmp/{{ _compose_uuid }}-simplified-installer.iso
       # end block
       always:
         - name: Delete simplified installer compose
+          # noqa no-changed-when
           ansible.builtin.command: >
-            composer-cli compose delete {{ _compose_uuid  }}
+            composer-cli compose delete {{ _compose_uuid }}
           when: demo_delete_composes | bool
 
 

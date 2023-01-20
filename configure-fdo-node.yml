@@ -1,11 +1,17 @@
 ---
-- ansible.builtin.import_playbook: 01-configure-hypervisor.yml
+- name: Configure hypervisor on FDO node
+  ansible.builtin.import_playbook: 01-configure-hypervisor.yml
   when: demo_type == 'fdo-hosted'
-- ansible.builtin.import_playbook: 02-configure-fdo-node.yml
-- ansible.builtin.import_playbook: 03-configure-fdo-registry.yml
-- ansible.builtin.import_playbook: 04-prep-image-build.yml
-- ansible.builtin.import_playbook: 05-build-containers.yml
-- ansible.builtin.import_playbook: 06-install-fdo-aio.yml
+- name: Configure FDO node
+  ansible.builtin.import_playbook: 02-configure-fdo-node.yml
+- name: Create container registry on FDO node
+  ansible.builtin.import_playbook: 03-configure-fdo-registry.yml
+- name: Image builder prep
+  ansible.builtin.import_playbook: 04-prep-image-build.yml
+- name: Build demo container images
+  ansible.builtin.import_playbook: 05-build-containers.yml
+- name: Install FDO AIO service
+  ansible.builtin.import_playbook: 06-install-fdo-aio.yml
 
 ...
 # vim: ft=yaml.ansible

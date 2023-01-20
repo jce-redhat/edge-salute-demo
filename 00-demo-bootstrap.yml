@@ -12,6 +12,9 @@
       ansible.builtin.template:
         src: inventory-hosts.j2
         dest: '{{ playbook_dir }}/inventory/hosts'
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0600
 
     - name: Add FDO node to /etc/hosts
       ansible.builtin.lineinfile:

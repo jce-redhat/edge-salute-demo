@@ -3,6 +3,24 @@ exclude_paths:
   - collections/ansible_collections/
   - vars/vault.yml
 
+kinds:
+  - playbook: '**/00-demo-bootstrap.yml'
+  - playbook: '**/01-configure-hypervisor.yml'
+  - playbook: '**/03-configure-fdo-registry.yml'
+  - playbook: '**/04-prep-image-build.yml'
+  - playbook: '**/05-build-containers.yml'
+  - playbook: '**/06-install-fdo-aio.yml'
+  - playbook: '**/07-build-ostree-image.yml'
+  - playbook: '**/08-create-edge-node-vm.yml'
+  - playbook: '**/build-edge-node.yml'
+  - playbook: '**/teardown-demo.yml'
+# the following reference a vault file either directly or via include, so
+# ansible-lint will fail unless the ANSIBLE_VAULT_PASSWORD_FILE environment
+# variable is used or vault_password_file is set in ansible.cfg
+#  - playbook: '**/02-configure-fdo-node.yml'
+#  - playbook: '**/configure-fdo-node.yml'
+
+profile: production
 offline: true
 
 ...

@@ -16,6 +16,7 @@
         activationkey: '{{ vault_rhsm_activation_key }}'
 
     - name: Update FDO node packages
+      # noqa package-latest
       ansible.builtin.dnf:
         name: '*'
         state: latest

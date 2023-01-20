@@ -27,6 +27,8 @@
 
     - name: Remove edge-node VM
       tags: edge-vm
+      when: "'edge-node' in _running_vms.list_vms"
+      become: true
       block:
         - name: Destroy edge-node VM
           community.libvirt.virt:
@@ -39,35 +41,38 @@
         - name: Undefine edge-node VM
           ansible.builtin.command: >
             virsh undefine edge-node --nvram
+          args:
+            removes: /etc/libvirt/qemu/edge-node.yml
 
         - name: Delete edge-node virtual disk
           ansible.builtin.file:
             path: /var/lib/libvirt/images/edge-node.qcow2
             state: absent
-      # end block
-      when: "'edge-node' in _running_vms.list_vms"
-      become: true
 
     # artifacts from 07-build-ostree-image.yml
     - name: Remove composer artifacts
       tags: composer
       block:
         - name: Get list of existing composes
+          # noqa no-changed-when
           ansible.builtin.command:
             composer-cli compose list
           register: _compose_list
 
         - name: Delete composes
+          # noqa no-changed-when
           ansible.builtin.command:
             composer-cli compose delete '{{ item.split()[0] }}'
           loop: '{{ _compose_list.stdout_lines }}'
 
         - name: Get list of existing blueprints
+          # noqa no-changed-when
           ansible.builtin.command:
             composer-cli blueprints list
           register: _blueprints_list
 
         - name: Delete blueprints
+          # noqa no-changed-when
           ansible.builtin.command:
             composer-cli blueprints delete '{{ item }}'
           loop: '{{ _blueprints_list.stdout_lines }}'
@@ -161,6 +166,7 @@
 
     - name: Remove container registry
       tags: registry
+      when: _registry_svc_stat.stat.exists
       block:
         - name: Stop container registry service
           ansible.builtin.systemd:
@@ -178,8 +184,6 @@
           containers.podman.podman_volume:
             name: '{{ demo_registry_container_name }}-data'
             state: absent
-      # end block
-      when: _registry_svc_stat.stat.exists
 
     - name: Remove local registry config file
       ansible.builtin.file:

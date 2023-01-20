@@ -30,6 +30,7 @@
     # have a way to see if a dhcp host reservation exists for idempotency
     # so this hack attempts to do so
     - name: Get XML for default libvirt network
+      # noqa no-changed-when
       ansible.builtin.command: >
         virsh net-dumpxml default
       register: _virt_net_xml
@@ -45,6 +46,7 @@
           ansible.builtin.copy:
             content: '{{ _virt_net_xml.stdout }}'
             dest: '{{ _tempdir.path }}/net.xml'
+            mode: 0600
 
         # work around nested quoting issue in net-update command below
         - name: Set temp _hostname fact
@@ -69,7 +71,6 @@
               '<host name="{{ _hostname }}" ip="{{ hostvars[_hostname].ansible_host }}" mac="{{ hostvars[_hostname].edge_node_mac_address }}"/>'
               --live --config
           when: _host_reservation is changed
-      # end block
       always:
         - name: Delete XML tempdir
           ansible.builtin.file:

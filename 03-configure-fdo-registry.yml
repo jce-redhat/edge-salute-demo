@@ -60,6 +60,9 @@
       ansible.builtin.file:
         path: '{{ ansible_user_dir }}/.config/systemd/user'
         state: directory
+        owner: '{{ ansible_user_id }}'
+        group: '{{ ansible_user_id }}'
+        mode: 0755
 
     - name: Create container registry volume
       containers.podman.podman_volume:
@@ -72,6 +75,7 @@
       register: _registry_container_info
 
     - name: Generate container registry systemd unit file
+      when: not _registry_container_info.containers
       block:
         # stopped state will create but not run the container so the
         # systemd unit file can be generated
@@ -95,7 +99,6 @@
           containers.podman.podman_container:
             name: '{{ demo_registry_container_name }}'
             state: absent
-      when: not _registry_container_info.containers
 
 
   handlers:

@@ -53,6 +53,7 @@
       register: _edge_node_pubkey
 
     - name: Read FDO node default serviceinfo_api_server.yml file
+      # noqa no-changed-when
       ansible.builtin.command: >
         cat /etc/fdo/aio/configs/serviceinfo_api_server.yml
       register: _default_svcinfo
