@@ -42,7 +42,7 @@
           ansible.builtin.command: >
             virsh undefine edge-node --nvram
           args:
-            removes: /etc/libvirt/qemu/edge-node.yml
+            removes: /etc/libvirt/qemu/edge-node.xml
 
         - name: Delete edge-node virtual disk
           ansible.builtin.file:
