@@ -17,6 +17,21 @@
       ansible.builtin.set_fact:
         _registry_svc_name: container-{{ demo_registry_container_name }}.service
 
+    # artifacts from 09-install-haproxy.yml
+    - name: Delete haproxy.cfg
+      tags: haproxy
+      ansible.builtin.file:
+        path: /etc/haproxy/haproxy.cfg
+        state: absent
+      become: true
+
+    - name: Remove haproxy package
+      tags: haproxy
+      ansible.builtin.dnf:
+        name: haproxy
+        state: absent
+      become: true
+
     # artifacts from 08-create-edge-node-vm.yml
     - name: Get current list of VMs
       tags: edge-vm
