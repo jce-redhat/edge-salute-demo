@@ -40,10 +40,14 @@ demo_edge_node_kiosk_packages:
     - gdm
     - gnome-kiosk-script-session
     - firefox
+    - liberation-sans-fonts
+    - liberation-narrow-fonts
   '8':
     - gdm
     - gnome-session-kiosk-session
     - firefox
+    - liberation-sans-fonts
+    - liberation-narrow-fonts
 demo_edge_node_vcpus: 2
 demo_edge_node_memory: 6144
 # calculate a default for this?
