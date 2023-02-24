@@ -60,7 +60,7 @@
         - name: Check if static reservation exists
           community.general.xml:
             path: '{{ _tempdir.path }}/net.xml'
-            xpath: /network/ip/dhcp/host[@name='{{ _hostname }}']
+            xpath: "/network/ip/dhcp/host[@name='{{ _hostname }}']"
           register: _host_reservation
 
         # use virsh net-update since community.libvirt.virt_net doesn't have

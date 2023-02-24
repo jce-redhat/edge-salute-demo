@@ -12,58 +12,48 @@
       tags: edge-image
       block:
         - name: Push edge node blueprint
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli blueprints push edge-blueprint.toml
-          args:
-            chdir: '{{ ansible_user_dir }}'
+          infra.osbuild.push_blueprint:
+            src: '{{ demo_composer_artifact_dir }}/edge-blueprint.toml'
 
         - name: Start edge node compose
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose start-ostree {{ demo_edge_blueprint_name }} edge-container
-          register: _compose_output
+          infra.osbuild.start_compose:
+            blueprint: '{{ demo_edge_blueprint_name }}'
+            compose_type: edge-container
+          register: _compose
 
-        - name: Get UUID of current compose
-          ansible.builtin.set_fact:
-            _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
+        - name: Wait up to 15 minutes for edge node compose to complete
+          infra.osbuild.wait_compose:
+            compose_id: '{{ _compose.result.build_id }}'
+            timeout: 900
 
-        - name: Wait for edge node compose to complete
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose info {{ _compose_uuid }}
-          register: _compose_status
-          failed_when: _compose_status.stdout_lines[0] | regex_search('FAILED')
-          until: _compose_status.stdout_lines[0] | regex_search('FINISHED')
-          retries: 30
-          delay: 30
-
-        - name: Download edge container image
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose image {{ _compose_uuid }}
-          args:
-            chdir: '{{ ansible_user_dir }}'
+        - name: Export edge node compose artifact
+          infra.osbuild.export_compose:
+            compose_id: '{{ _compose.result.build_id }}'
+            dest: '{{ demo_composer_artifact_dir }}/edge-{{ _compose.result.build_id }}-container.tar'
 
         - name: Copy edge container image to local image cache
           # noqa no-changed-when
           ansible.builtin.command: >
-            skopeo copy oci-archive:{{ _compose_uuid }}-container.tar containers-storage:localhost/rfe-mirror:latest
+            skopeo copy
+                oci-archive:edge-{{ _compose.result.build_id }}-container.tar
+                containers-storage:localhost/rfe-mirror:latest
           args:
-            chdir: '{{ ansible_user_dir }}'
+            chdir: '{{ demo_composer_artifact_dir }}'
       # end block
       always:
         - name: Delete edge node compose artifacts
           when: demo_delete_composes | bool
           block:
+            # TODO switch to infra.osbuild when feature is implemented
+            # (and again below)
             - name: Delete edge node compose
               # noqa no-changed-when
               ansible.builtin.command: >
-                composer-cli compose delete {{ _compose_uuid }}
+                composer-cli compose delete {{ _compose.result.build_id }}
 
             - name: Delete edge node compose image
               ansible.builtin.file:
-                path: '{{ ansible_user_dir }}/{{ _compose_uuid }}-container.tar'
+                path: '{{ demo_composer_artifact_dir }}/edge-{{ _compose.result.build_id }}-container.tar'
                 state: absent
 
     - name: Simplified installer firewall operations
@@ -97,62 +87,47 @@
               - '8000:8080'
 
         - name: Push simplified installer blueprint
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli blueprints push simplified-installer.toml
-          args:
-            chdir: '{{ ansible_user_dir }}'
+          infra.osbuild.push_blueprint:
+            src: '{{ demo_composer_artifact_dir }}/simplified-installer.toml'
 
         - name: Start simplified installer compose
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose start-ostree {{ demo_installer_blueprint_name }} edge-simplified-installer
-              --url http://{{ hostvars['fdo-node'].ansible_default_ipv4.address }}:8000/repo/
-          register: _compose_output
+          infra.osbuild.start_compose:
+            blueprint: '{{ demo_installer_blueprint_name }}'
+            compose_type: edge-simplified-installer
+            ostree_url: http://localhost:8000/repo/
+          register: _compose
 
-        - name: Get UUID of current compose
-          ansible.builtin.set_fact:
-            _compose_uuid: '{{ _compose_output.stdout_lines[0].split()[1] }}'
+        - name: Wait up to 15 minutes for simplified installer compose to complete
+          infra.osbuild.wait_compose:
+            compose_id: '{{ _compose.result.build_id }}'
+            timeout: 900
 
-        - name: Wait for simplified installer compose to complete
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose info {{ _compose_uuid }}
-          register: _compose_status
-          failed_when: _compose_status.stdout_lines[0] | regex_search('FAILED')
-          until: _compose_status.stdout_lines[0] | regex_search('FINISHED')
-          retries: 30
-          delay: 30
-
-        - name: Remove existing simplified installer ISO
-          ansible.builtin.file:
-            path: /tmp/simplified-installer.iso
-            state: absent
-          become: true
-
-        - name: Download simplified installer image
-          # noqa no-changed-when
-          ansible.builtin.command: >
-            composer-cli compose image {{ _compose_uuid }}
-          args:
-            chdir: /tmp
+        - name: Export simplified installer compose artifact
+          infra.osbuild.export_compose:
+            compose_id: '{{ _compose.result.build_id }}'
+            dest: '{{ demo_composer_artifact_dir }}/installer-{{ _compose.result.build_id }}.iso'
 
         # could copy/delete but this is atomic and much faster than a copy.
         # not using 'creates' for idempotency so the target gets overwritten
         # with a new image when created.
         - name: Rename simplified installer image
           ansible.builtin.command: >
-            mv -f /tmp/{{ _compose_uuid }}-simplified-installer.iso /tmp/simplified-installer.iso
+            mv -f installer-{{ _compose.result.build_id }}.iso simplified-installer.iso
           args:
-            removes: /tmp/{{ _compose_uuid }}-simplified-installer.iso
+            chdir: '{{ demo_composer_artifact_dir }}'
+            removes: installer-{{ _compose.result.build_id }}.iso
       # end block
       always:
         - name: Delete simplified installer compose
           # noqa no-changed-when
           ansible.builtin.command: >
-            composer-cli compose delete {{ _compose_uuid }}
+            composer-cli compose delete {{ _compose.result.build_id }}
           when: demo_delete_composes | bool
 
+        - name: Remove edge node mirror container
+          containers.podman.podman_container:
+            name: rfe-mirror
+            state: stopped
 
 ...
 # vim: ft=yaml.ansible

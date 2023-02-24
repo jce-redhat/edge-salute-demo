@@ -29,7 +29,7 @@
           --host-device 0x{{ demo_edge_node_video_vendor }}:0x{{ demo_edge_node_video_product }}
           --boot uefi
           --autostart
-          --cdrom /tmp/simplified-installer.iso
+          --cdrom {{ demo_composer_artifact_dir }}/simplified-installer.iso
       when: 'not "edge-node" in _all_vms.list_vms'
 
 

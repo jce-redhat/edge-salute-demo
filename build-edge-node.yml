@@ -4,8 +4,8 @@
 - name: Create edge node VM
   ansible.builtin.import_playbook: 08-create-edge-node-vm.yml
   when: demo_type == 'fdo-hosted'
-- name: Install reverse proxy for demo webapp access
-  ansible.builtin.import_playbook: 09-install-haproxy.yml
+- name: Configure reverse proxy for demo webapp access
+  ansible.builtin.import_playbook: 09-reverse-proxy.yml
   when: demo_type == 'fdo-hosted'
 
 ...

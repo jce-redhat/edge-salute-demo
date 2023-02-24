@@ -17,19 +17,21 @@
       ansible.builtin.set_fact:
         _registry_svc_name: container-{{ demo_registry_container_name }}.service
 
-    # artifacts from 09-install-haproxy.yml
-    - name: Delete haproxy.cfg
-      tags: haproxy
+    # artifacts from 09-reverse-proxy.yml
+    - name: Delete httpd salute.conf
+      tags: proxy
       ansible.builtin.file:
-        path: /etc/haproxy/haproxy.cfg
+        path: /etc/httpd/conf.d/salute.conf
         state: absent
       become: true
+      notify: Restart httpd
 
-    - name: Remove haproxy package
-      tags: haproxy
-      ansible.builtin.dnf:
-        name: haproxy
-        state: absent
+    - name: Reset SELinux boolean
+      tags: proxy
+      ansible.posix.seboolean:
+        name: httpd_can_network_relay
+        state: false
+        persistent: true
       become: true
 
     # artifacts from 08-create-edge-node-vm.yml
@@ -68,29 +70,27 @@
     - name: Remove composer artifacts
       tags: composer
       block:
-        - name: Get list of existing composes
-          # noqa no-changed-when
-          ansible.builtin.command:
-            composer-cli compose list
-          register: _compose_list
+        - name: Get list of finished blueprints
+          infra.osbuild.get_all_finished_images:
+          register: _composes
 
+        # NOTE:infra.osbuild doesn't have a module to delete composes yet
         - name: Delete composes
           # noqa no-changed-when
           ansible.builtin.command:
-            composer-cli compose delete '{{ item.split()[0] }}'
-          loop: '{{ _compose_list.stdout_lines }}'
+            composer-cli compose delete '{{ item.id }}'
+          loop: '{{ _composes.result.finished }}'
 
         - name: Get list of existing blueprints
-          # noqa no-changed-when
-          ansible.builtin.command:
-            composer-cli blueprints list
-          register: _blueprints_list
+          infra.osbuild.list_blueprints:
+          register: _blueprints
 
+        # NOTE:infra.osbuild doesn't have a module to delete blueprints yet
         - name: Delete blueprints
           # noqa no-changed-when
           ansible.builtin.command:
             composer-cli blueprints delete '{{ item }}'
-          loop: '{{ _blueprints_list.stdout_lines }}'
+          loop: '{{ _blueprints.blueprints }}'
 
         - name: Remove simplified-installer.iso
           ansible.builtin.file:
@@ -169,8 +169,8 @@
         path: '{{ item }}'
         state: absent
       loop:
-        - '{{ ansible_user_dir }}/edge-blueprint.toml'
-        - '{{ ansible_user_dir }}/simplified-installer.toml'
+        - '{{ demo_composer_artifact_dir }}/edge-blueprint.toml'
+        - '{{ demo_composer_artifact_dir }}/simplified-installer.toml'
 
     # artifacts from 03-configure-fdo-registry.yml
     - name: Check for existence of container registry service file
@@ -206,6 +206,13 @@
         state: absent
       become: true
 
+
+  handlers:
+    - name: Restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        state: restarted
+      become: true
 
 ...
 # vim: ft=yaml.ansible

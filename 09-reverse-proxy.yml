@@ -1,0 +1,36 @@
+---
+- name: Configure httpd reverse proxy
+  hosts: fdo-node
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vars/demo_vars.yml
+
+  tasks:
+    # the infra.osbuild.setup_server installs apache so
+    # use it to reverse proxy connections to the edge VM
+    - name: Create httpd proxy config file
+      ansible.builtin.template:
+        src: salute.conf.j2
+        dest: /etc/httpd/conf.d/salute.conf
+        owner: root
+        group: root
+        mode: 0644
+      notify: Restart httpd
+
+    - name: Set httpd_can_network_relay SElinux boolean
+      ansible.posix.seboolean:
+        name: httpd_can_network_relay
+        state: true
+        persistent: true
+
+
+  handlers:
+    - name: Restart httpd
+      ansible.builtin.systemd:
+        name: httpd
+        enabled: true
+        state: restarted
+
+...

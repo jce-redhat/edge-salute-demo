@@ -21,15 +21,6 @@
         name: '*'
         state: latest
 
-    - name: Install image builder packages
-      ansible.builtin.dnf:
-        name:
-          - osbuild-composer
-          - composer-cli
-          - cockpit-composer
-        state: present
-      notify: Restart image builder services
-
     - name: Install additional packages
       ansible.builtin.dnf:
         name:
@@ -47,16 +38,10 @@
       ansible.builtin.user:
         name: '{{ ansible_env.SUDO_USER }}'
         groups: weldr
-      notify: Restart image builder services
 
-
-  handlers:
-    - name: Restart image builder services
-      ansible.builtin.systemd:
-        name: osbuild-composer.socket
-        enabled: true
-        state: started
-
+    - name: Run osbuild setup
+      ansible.builtin.import_role:
+        name: infra.osbuild.setup_server
 
 ...
 # vim: ft=yaml.ansible

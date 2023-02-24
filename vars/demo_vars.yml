@@ -20,10 +20,9 @@ demo_edge_node_video_product: '6366'
 demo_registry_container_name: local-registry
 demo_registry_host: '{{ hostvars["fdo-node"].ansible_default_ipv4.address }}:5000'
 
+demo_composer_artifact_dir: /tmp
 demo_edge_blueprint_name: Edge
-demo_edge_blueprint_version: '0.0.1'
 demo_installer_blueprint_name: SimplifiedInstall
-demo_installer_blueprint_version: '0.0.1'
 
 # delete builder compose artifacts at end of playbook run
 demo_delete_composes: true

@@ -32,21 +32,31 @@
       register: _edge_node_pubkey
 
     - name: Create edge node image blueprint
-      ansible.builtin.template:
-        src: templates/edge-blueprint.toml.j2
-        dest: '{{ ansible_user_dir }}/edge-blueprint.toml'
-        owner: '{{ ansible_user_id }}'
-        group: '{{ ansible_user_id }}'
-        mode: 0644
+      infra.osbuild.create_blueprint:
+        name: '{{ demo_edge_blueprint_name }}'
+        dest: '/tmp/edge-blueprint.toml'
+        packages: '{{ demo_edge_node_packages[ansible_distribution_major_version] +
+                      demo_edge_node_kiosk_packages[ansible_distribution_major_version] }}'
+        customizations:
+          user:
+            name: '{{ demo_edge_node_user }}'
+            description: 'default edge user'
+            password: '{{ demo_edge_node_password | password_hash }}'
+            key: '{{ _edge_node_pubkey.content | b64decode | trim }}'
+            home: '/home/{{ demo_edge_node_user }}/'
+            shell: '/usr/bin/bash'
+            groups:
+              - 'wheel'
 
     - name: Create installer image blueprint
-      ansible.builtin.template:
-        src: templates/simplified-installer.toml.j2
-        dest: '{{ ansible_user_dir }}/simplified-installer.toml'
-        owner: '{{ ansible_user_id }}'
-        group: '{{ ansible_user_id }}'
-        mode: 0644
-
+      infra.osbuild.create_blueprint:
+        name: '{{ demo_installer_blueprint_name }}'
+        dest: '/tmp/simplified-installer.toml'
+        customizations:
+          installation_device: '/dev/vda'
+          fdo:
+            manufacturing_server_url: 'http://{{ hostvars["fdo-node"].ansible_default_ipv4.address }}:8080'
+            diun_pub_key_insecure: 'true'
 
 ...
 # vim: ft=yaml.ansible
