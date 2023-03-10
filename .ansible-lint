@@ -12,7 +12,7 @@ kinds:
   - playbook: '**/06-install-fdo-aio.yml'
   - playbook: '**/07-build-ostree-image.yml'
   - playbook: '**/08-create-edge-node-vm.yml'
-  - playbook: '**/09-install-haproxy.yml'
+  - playbook: '**/09-reverse-proxy.yml'
   - playbook: '**/build-edge-node.yml'
   - playbook: '**/teardown-demo.yml'
 # the following reference a vault file either directly or via include, so
